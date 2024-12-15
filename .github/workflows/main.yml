@@ -29,15 +29,22 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/flask-app:latest
 
-      # Step 4: Deploy to EC2 with webfactory/ssh-agent
+      # Step 4: Set up SSH Agent
       - name: Set up SSH Agent
         uses: webfactory/ssh-agent@v0.5.0  # SSH Agent Action
         with:
           ssh-private-key: ${{ secrets.EC2_KEY }}
 
+      # Step 5: Deploy to EC2
       - name: Deploy to EC2
         run: |
+          # Ensure Docker permissions on EC2 instance are correct
           ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_IP }} << 'EOF'
+            # Check if the user is in the docker group and Docker is running
+            id -nG $USER | grep -qw docker || { echo "User is not in the docker group"; exit 1; }
+            sudo service docker start || true
+            sudo systemctl enable docker || true
+
             # Stop and remove the existing container (if running)
             docker stop flask-app || true
             docker rm flask-app || true
@@ -45,6 +52,6 @@ jobs:
             # Pull the latest image from Docker Hub
             docker pull ${{ secrets.DOCKER_USERNAME }}/flask-app:latest
 
-            # Run the container
+            # Run the container (ensure Docker is running and the port is available)
             docker run -d -p 5000:5000 --name flask-app ${{ secrets.DOCKER_USERNAME }}/flask-app:latest
           EOF
